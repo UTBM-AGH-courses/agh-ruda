@@ -22,57 +22,120 @@ cudaError_t customCudaError(cudaError_t result)
    	return result;
 }
 
-__global__
-void hashFunction(unsigned int *rainbow, unsigned int columnCount)
+void displayTable(unsigned long long *rainbow, unsigned int columnCount, unsigned int rowCount)
 {
-	int th = blockIdx.x * blockDim.x + threadIdx.x;
-    	if (th % columnCount == 0)
+	printf("Here the generated table (r:%d x c:%d) :\n", rowCount, columnCount);
+	for(int i = 0; i < rowCount; i++)
 	{
-		unsigned long long copy = rainbow[th];
-		copy = ((copy >> 8) ^ copy) * 0x45d9f3b;
-		copy = ((copy >> 8) ^ copy) * 0x45d9f3b;
-		copy = (copy >> 8) ^ copy;
-    		printf("PLAIN : %d | HASH : %s\n", rainbow[th], to_string(copy));
-	}
-	__syncthreads();
-	else {
-			
+		printf("PLAIN : %d | HASH : %llu\n", rainbow[i*columnCount], rainbow[i*columnCount + 1]);
 	}
 }
 
+__global__
+void findingKernel(unsigned long long *rainbow, unsigned long long hash, unsigned int columnCount, unsigned int rowCount)
+{
+	bool found = false;
+
+	for(int i = 0; i < rowCount; i++)
+	{
+		if (rainbow[i*columnCount + 1] != hash)
+		{
+			printf("NOK\n");
+		}
+		else
+		{
+			printf("OKKKKKKKKKKKKKKKKKKKKKKK\n");
+		}
+	}
+
+}
+
+__global__
+void rainbowKernel(unsigned long long *rainbow, unsigned int columnCount, unsigned int maxValue)
+{
+	int th = blockIdx.x * blockDim.x + threadIdx.x;
+	unsigned long long plain = rainbow[th*columnCount];
+	unsigned long long hash;
+	unsigned long long reduction;
+
+	for (int i = 0; i < columnCount; i++)
+	{
+		// HASHING
+		hash = ((plain >> 8) ^ plain) * 0x45d9f3b;
+		hash = ((hash >> 8) ^ hash) * 0x45d9f3b;
+		hash = (hash >> 8) ^ hash;
+
+		reduction = hash;
+		// REDUCTION
+		while (reduction > maxValue)
+		{
+			reduction = reduction / 10;
+		}
+		plain = reduction;
+	}
+	rainbow[th*columnCount + 1] = hash;
+}
 
 int main(int argc, char** argv) {
 
 	system("clear");
-	
+
 	unsigned int maxValue = 9999;
 	unsigned int minValue = 1111;
-	int rowCount = 64;
+	int rowCount = 32;
 	int columnCount = 2;
-	unsigned int *d_rainbow = NULL;
- 	unsigned int *rainbow = NULL;
+	char *s_hash = NULL;
+	unsigned long long hash = 0;
+	unsigned long long *d_rainbow = NULL;
+ 	unsigned long long *rainbow = NULL;
+	unsigned long long *f_rainbow = NULL;
 
 	int dev = findCudaDevice(argc, (const char **)argv);
-	
-	rainbow = (unsigned int *)malloc(sizeof(unsigned int) * rowCount * columnCount);
+
+	rainbow = (unsigned long long *)malloc(sizeof(unsigned long long) * rowCount * columnCount);
+	f_rainbow = (unsigned long long *)malloc(sizeof(unsigned long long) * rowCount * columnCount);
+
+	if (checkCmdLineFlag(argc, (const char **)argv, "help") || checkCmdLineFlag(argc, (const char **)argv, "?"))
+    	{
+        	printf("Usage :\n");
+		printf("      -hash=HASH [2568782378648878273] (Password hash you want to crack) \n");
+        	printf("      -verbose (Display the rainbow table)\n");
+
+        	exit(EXIT_SUCCESS);
+    	}
+
+	if (checkCmdLineFlag(argc, (const char **)argv, "hash"))
+    	{
+        	getCmdLineArgumentString(argc, (const char **)argv, "hash", &s_hash);
+        	hash = atoll(s_hash);
+		printf("%llu\n", hash);
+    	}
 
 	printf("Generating data...\n");
     	srand(time(NULL));
-    	for (int i = 0; i < rowCount; i+=columnCount)
+    	for (int i = 0; i < rowCount; i++)
     	{
-		printf("%d\n", i);
-        	rainbow[i] = rand() % (maxValue-minValue + 1) + minValue;
+        	rainbow[i*columnCount] = rand() % (maxValue-minValue + 1) + minValue;
 	}
+	rainbow[62] = 1234;
+	printf("Generation done.\n");
 
-	customCudaError(cudaMalloc((void **)&d_rainbow, sizeof(unsigned int) * rowCount * columnCount));
-	customCudaError(cudaMemcpy(d_rainbow, rainbow, sizeof(unsigned int) * rowCount * columnCount, cudaMemcpyHostToDevice));
-	
-	hashFunction<<<1,rowCount>>>(d_rainbow, columnCount);
+	customCudaError(cudaMalloc((void **)&d_rainbow, sizeof(unsigned long long) * rowCount * columnCount));
+	customCudaError(cudaMemcpy(d_rainbow, rainbow, sizeof(unsigned long long) * rowCount * columnCount, cudaMemcpyHostToDevice));
+
+	rainbowKernel<<<1,rowCount>>>(d_rainbow, columnCount, maxValue);
+
+	customCudaError(cudaMemcpy(f_rainbow, d_rainbow, sizeof(unsigned long long) * rowCount * columnCount, cudaMemcpyDeviceToHost));
+	displayTable(f_rainbow, columnCount, rowCount);
+
+	findingKernel<<<1,1>>>(d_rainbow, hash, columnCount, rowCount);
+
+
 	customCudaError(cudaFree(d_rainbow));
-
 	customCudaError(cudaDeviceSynchronize());
 
 	free(rainbow);
+	free(f_rainbow);
     	exit(EXIT_SUCCESS);
 
 }
