@@ -24,7 +24,7 @@ cudaError_t customCudaError(cudaError_t result)
 
 void displayTable(unsigned long long *rainbow, unsigned int columnCount, unsigned int rowCount)
 {
-	printf("Here the generated table (r:%d x c:%d) :\n", rowCount, columnCount);
+	printf("Rainbow table (row=%d x depth=%d) :\n", rowCount, columnCount);
 	for(int i = 0; i < rowCount; i++)
 	{
 		printf("PLAIN : %d | HASH : %llu\n", rainbow[i*columnCount], rainbow[i*columnCount + 1]);
@@ -35,19 +35,17 @@ __global__
 void findingKernel(unsigned long long *rainbow, unsigned long long hash, unsigned int columnCount, unsigned int rowCount)
 {
 	bool found = false;
+	printf("############\n");
+	printf("Finding the password into the rainbow table : \n");
 
 	for(int i = 0; i < rowCount; i++)
 	{
-		if (rainbow[i*columnCount + 1] != hash)
+		if (rainbow[i*columnCount + 1] == hash)
 		{
-			printf("NOK\n");
-		}
-		else
-		{
-			printf("OKKKKKKKKKKKKKKKKKKKKKKK\n");
+			printf("Match for %llu (HASH : %llu)\n", rainbow[i*columnCount], hash);
 		}
 	}
-
+	printf("############\n");
 }
 
 __global__
@@ -61,9 +59,9 @@ void rainbowKernel(unsigned long long *rainbow, unsigned int columnCount, unsign
 	for (int i = 0; i < columnCount; i++)
 	{
 		// HASHING
-		hash = ((plain >> 8) ^ plain) * 0x45d9f3b;
-		hash = ((hash >> 8) ^ hash) * 0x45d9f3b;
-		hash = (hash >> 8) ^ hash;
+		hash = ((plain >> 16) ^ plain) * 0x45d;
+		hash = ((hash >> 16) ^ hash) * 0x45d;
+		hash = (hash >> 16) ^ hash;
 
 		reduction = hash;
 		// REDUCTION
@@ -82,9 +80,10 @@ int main(int argc, char** argv) {
 
 	unsigned int maxValue = 9999;
 	unsigned int minValue = 1111;
-	int rowCount = 32;
-	int columnCount = 2;
+	unsigned int rowCount = 32;
+	unsigned int columnCount = 4096;
 	char *s_hash = NULL;
+	int display = 0;
 	unsigned long long hash = 0;
 	unsigned long long *d_rainbow = NULL;
  	unsigned long long *rainbow = NULL;
@@ -98,7 +97,9 @@ int main(int argc, char** argv) {
 	if (checkCmdLineFlag(argc, (const char **)argv, "help") || checkCmdLineFlag(argc, (const char **)argv, "?"))
     	{
         	printf("Usage :\n");
-		printf("      -hash=HASH [2568782378648878273] (Password hash you want to crack) \n");
+		printf("      -hash=HASH [0] (Password hash you want to crack) \n");
+		printf("      -row=ROW [32] (Rainbow table's row count) \n");
+		printf("      -depth=DEPTH [4096] (Rainbow table's column count) \n");
         	printf("      -verbose (Display the rainbow table)\n");
 
         	exit(EXIT_SUCCESS);
@@ -108,7 +109,21 @@ int main(int argc, char** argv) {
     	{
         	getCmdLineArgumentString(argc, (const char **)argv, "hash", &s_hash);
         	hash = atoll(s_hash);
-		printf("%llu\n", hash);
+    	}
+
+        if (checkCmdLineFlag(argc, (const char **)argv, "row"))
+        {
+		rowCount = getCmdLineArgumentInt(argc, (const char**)argv, "row");
+
+	}
+        if (checkCmdLineFlag(argc, (const char **)argv, "depth"))
+        {
+		columnCount = getCmdLineArgumentInt(argc, (const char**)argv, "depth");
+        }
+
+	if (checkCmdLineFlag(argc, (const char **)argv, "verbose"))
+    	{
+        	display = 1;
     	}
 
 	printf("Generating data...\n");
