@@ -101,8 +101,24 @@ void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 
 }
 
+__global__
+void rainbowKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned int columnCount, unsigned int maxValue) {
+	int th = blockIdx.x * blockDim.x + threadIdx.x;
+	unsigned int plain = plainArray[th];
+	unsigned int hash;
+	unsigned int reduction;
 
-void rainbowWrapper(unsigned int rowCount, unsigned int columnCount, unsigned int maxValue, unsigned int *plainArray, unsigned int *hashArray, boolean display)
+	for (int i = 0; i < columnCount; i++)
+	{
+		hashingKernel(plain, &hash);
+		reduction = hash;
+		reductionKernel(maxValue, hash, &reduction);
+		plain = reduction;
+	}
+	hashArray[th] = hash;
+}
+
+void rainbowWrapper(unsigned int rowCount, unsigned int columnCount, unsigned int maxValue, unsigned int *plainArray, unsigned int *hashArray, bool display)
 {
 	unsigned int *d_plainArray = NULL;
 	unsigned int *d_hashArray = NULL;
@@ -154,30 +170,13 @@ void rainbowWrapper(unsigned int rowCount, unsigned int columnCount, unsigned in
 	customCudaError(cudaFree(d_hashArray));
 }
 
-__global__
-void rainbowKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned int columnCount, unsigned int maxValue) {
-	int th = blockIdx.x * blockDim.x + threadIdx.x;
-	unsigned int plain = plainArray[th];
-	unsigned int hash;
-	unsigned int reduction;
-
-	for (int i = 0; i < columnCount; i++)
-	{
-		hashingKernel(plain, &hash);
-		reduction = hash;
-		reductionKernel(maxValue, hash, &reduction);
-		plain = reduction;
-	}
-	hashArray[th] = hash;
-}
-
 int main(int argc, char** argv) {
 
 	unsigned int maxValue = 99999;
 	unsigned int minValue = 11111;
 	unsigned int rowCount = 4;
 	unsigned int columnCount = 4096;
-	boolean display = false;
+	bool display = false;
 	char * s_hash;
 	unsigned int hash = 0;
  	unsigned int *plainArray = NULL;
@@ -233,7 +232,7 @@ int main(int argc, char** argv) {
 
 	printf("Generation done\n");
 
-	rainbowWrapper(rowCount, columnCount, maxValue, plainArray, hashArray, display)
+	rainbowWrapper(rowCount, columnCount, maxValue, plainArray, hashArray, display);
 
 	free(plainArray);
 	free(hashArray);
