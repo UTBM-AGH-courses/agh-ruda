@@ -67,18 +67,21 @@ void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 
 	while (!found)
 	{
+		// If the hash we are trying to guess match one of the entry from the hashArray
 		if (localHash == hash)
 		{
+			found = true;
+			__threadfence();
 			for (int i = 0; i < columnCount; i++)
 			{
+				// Hash the plain text of the corresponding row
 				hashingKernel(plain, &localHash);
 				if (localHash == hash)
 				{
 					printf("#### Match for %d (HASH : %d) on Thread %d ####\n", plain, localHash, th);
-					found = true;
-					__threadfence();
 					break;
 				}
+				// If both hashes do not match, reduce and hash until getting the correct value
 				else
 				{
 					reduction = localHash;
@@ -89,6 +92,7 @@ void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 			}
 
 		}
+		// If no entries match, reduce and hash until getting a matching value
 		else
 		{
 			reductionKernel(maxValue, localHash, &reduction);
