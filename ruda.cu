@@ -26,7 +26,6 @@ cudaError_t customCudaError(cudaError_t result)
    	return result;
 }
 
-__device__
 void displayTable(unsigned int *plain, unsigned int *hash, unsigned int columnCount, unsigned int rowCount)
 {
 	printf("Rainbow table (row=%d x depth=%d) :\n", rowCount, columnCount);
@@ -79,6 +78,7 @@ void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 				if (localHash == hash)
 				{
 					printf("#### Match for %d (HASH : %d) on Thread %d ####\n", plain, localHash, th);
+					__syncthreads();
 					break;
 				}
 				// If both hashes do not match, reduce and hash until getting the correct value
