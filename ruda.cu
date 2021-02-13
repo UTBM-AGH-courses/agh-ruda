@@ -12,6 +12,11 @@
 
 using namespace std;
 
+#define MAX_BLOCK_SIZE 1024
+
+__device__ bool found;
+
+
 cudaError_t customCudaError(cudaError_t result)
 {
 	if (result != cudaSuccess)
@@ -22,77 +27,116 @@ cudaError_t customCudaError(cudaError_t result)
    	return result;
 }
 
-void displayTable(unsigned long long *rainbow, unsigned int columnCount, unsigned int rowCount)
+void displayTable(unsigned int *plain, unsigned int *hash, unsigned int columnCount, unsigned int rowCount)
 {
 	printf("Rainbow table (row=%d x depth=%d) :\n", rowCount, columnCount);
 	for(int i = 0; i < rowCount; i++)
 	{
-		printf("PLAIN : %d | HASH : %llu\n", rainbow[i*columnCount], rainbow[i*columnCount + 1]);
+		printf("PLAIN : %d | HASH : %d\n", plain[i], hash[i]);
 	}
 }
 
-__global__
-void findingKernel(unsigned long long *rainbow, unsigned long long hash, unsigned int columnCount, unsigned int rowCount)
+__device__
+void hashingKernel(unsigned int plain, unsigned int *hash)
 {
-	bool found = false;
-	printf("############\n");
-	printf("Finding the password into the rainbow table : \n");
+	*hash = ((plain >> 16) ^ plain) * 0x45;
+	*hash = ((*hash >> 16) ^ *hash) * 0x45;
+	*hash = (*hash >> 16) ^ *hash;
+	//*hash = plain*37;
 
-	for(int i = 0; i < rowCount; i++)
+}
+
+__device__
+void reductionKernel(unsigned int maxValue, unsigned int hash, unsigned int *reduction)
+{
+	while (hash > maxValue)
 	{
-		if (rainbow[i*columnCount + 1] == hash)
-		{
-			printf("Match for %llu (HASH : %llu)\n", rainbow[i*columnCount], hash);
-		}
+		hash = hash / 10;
 	}
-	printf("############\n");
+	*reduction = hash;
+
 }
 
 __global__
-void rainbowKernel(unsigned long long *rainbow, unsigned int columnCount, unsigned int maxValue)
+void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned int hash, unsigned int columnCount, unsigned int rowCount, unsigned int maxValue)
 {
 	int th = blockIdx.x * blockDim.x + threadIdx.x;
-	unsigned long long plain = rainbow[th*columnCount];
-	unsigned long long hash;
-	unsigned long long reduction;
+	unsigned int localHash = hashArray[th];
+	unsigned int plain = plainArray[th];
+	unsigned int reduction;
+
+	while (!found)
+	{
+		if (localHash == hash)
+		{
+			for (int i = 0; i < columnCount; i++)
+			{
+				hashingKernel(plain, &localHash);
+				if (localHash == hash)
+				{
+					printf("#### Match for %d (HASH : %d) on Thread %d ####\n", plain, localHash, th);
+					found = true;
+					__threadfence();
+					break;
+				}
+				else
+				{
+					reduction = localHash;
+					reductionKernel(maxValue, localHash, &reduction);
+					plain = reduction;
+					__syncthreads();
+				}
+			}
+
+		}
+		else
+		{
+			reductionKernel(maxValue, localHash, &reduction);
+			plain = reduction;
+			hashingKernel(plain, &localHash);
+			reduction = localHash;
+			__syncthreads();
+		}
+	}
+
+}
+
+__global__
+void rainbowKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned int columnCount, unsigned int maxValue) {
+	int th = blockIdx.x * blockDim.x + threadIdx.x;
+	unsigned int plain = plainArray[th];
+	unsigned int hash;
+	unsigned int reduction;
 
 	for (int i = 0; i < columnCount; i++)
 	{
-		// HASHING
-		hash = ((plain >> 16) ^ plain) * 0x45d;
-		hash = ((hash >> 16) ^ hash) * 0x45d;
-		hash = (hash >> 16) ^ hash;
-
+		hashingKernel(plain, &hash);
 		reduction = hash;
-		// REDUCTION
-		while (reduction > maxValue)
-		{
-			reduction = reduction / 10;
-		}
+		reductionKernel(maxValue, hash, &reduction);
 		plain = reduction;
 	}
-	rainbow[th*columnCount + 1] = hash;
+	hashArray[th] = hash;
 }
 
 int main(int argc, char** argv) {
 
-	system("clear");
-
-	unsigned int maxValue = 9999;
-	unsigned int minValue = 1111;
+	unsigned int maxValue = 99999;
+	unsigned int minValue = 11111;
 	unsigned int rowCount = 32;
 	unsigned int columnCount = 4096;
-	char *s_hash = NULL;
 	int display = 0;
-	unsigned long long hash = 0;
-	unsigned long long *d_rainbow = NULL;
- 	unsigned long long *rainbow = NULL;
-	unsigned long long *f_rainbow = NULL;
+	char * s_hash;
+	unsigned int hash = 0;
+ 	unsigned int *plainArray = NULL;
+ 	unsigned int *d_plainArray = NULL;
+	unsigned int *hashArray = NULL;
+	unsigned int *d_hashArray = NULL;
+	cudaEvent_t start;
+	cudaEvent_t stop;
+
+	system("clear");
 
 	int dev = findCudaDevice(argc, (const char **)argv);
-
-	rainbow = (unsigned long long *)malloc(sizeof(unsigned long long) * rowCount * columnCount);
-	f_rainbow = (unsigned long long *)malloc(sizeof(unsigned long long) * rowCount * columnCount);
 
 	if (checkCmdLineFlag(argc, (const char **)argv, "help") || checkCmdLineFlag(argc, (const char **)argv, "?"))
     	{
@@ -108,7 +152,7 @@ int main(int argc, char** argv) {
 	if (checkCmdLineFlag(argc, (const char **)argv, "hash"))
     	{
         	getCmdLineArgumentString(argc, (const char **)argv, "hash", &s_hash);
-        	hash = atoll(s_hash);
+        	hash = atoi(s_hash);
     	}
 
         if (checkCmdLineFlag(argc, (const char **)argv, "row"))
@@ -126,31 +170,57 @@ int main(int argc, char** argv) {
         	display = 1;
     	}
 
-	printf("Generating data...\n");
+	plainArray = (unsigned int *)malloc(sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE);
+	hashArray = (unsigned int *)malloc(sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE);
+
+	printf("Generating random passwords...\n");
     	srand(time(NULL));
-    	for (int i = 0; i < rowCount; i++)
-    	{
-        	rainbow[i*columnCount] = rand() % (maxValue-minValue + 1) + minValue;
+    	for (int i = 0; i < rowCount * MAX_BLOCK_SIZE; i++)
+  	{
+		plainArray[i] = rand() % (maxValue-minValue + 1) + minValue;
 	}
-	rainbow[62] = 1234;
-	printf("Generation done.\n");
+	printf("Generation done\n");
 
-	customCudaError(cudaMalloc((void **)&d_rainbow, sizeof(unsigned long long) * rowCount * columnCount));
-	customCudaError(cudaMemcpy(d_rainbow, rainbow, sizeof(unsigned long long) * rowCount * columnCount, cudaMemcpyHostToDevice));
+	customCudaError(cudaMalloc((void **)&d_plainArray, sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE));
+	customCudaError(cudaMalloc((void **)&d_hashArray, sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE));
 
-	rainbowKernel<<<1,rowCount>>>(d_rainbow, columnCount, maxValue);
+	customCudaError(cudaMemcpy(d_plainArray, plainArray, sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE, cudaMemcpyHostToDevice));
 
-	customCudaError(cudaMemcpy(f_rainbow, d_rainbow, sizeof(unsigned long long) * rowCount * columnCount, cudaMemcpyDeviceToHost));
-	displayTable(f_rainbow, columnCount, rowCount);
-
-	findingKernel<<<1,1>>>(d_rainbow, hash, columnCount, rowCount);
-
-
-	customCudaError(cudaFree(d_rainbow));
+	rainbowKernel<<<rowCount,1024>>>(d_plainArray, d_hashArray, columnCount, maxValue);
 	customCudaError(cudaDeviceSynchronize());
 
-	free(rainbow);
-	free(f_rainbow);
+	customCudaError(cudaMemcpy(hashArray, d_hashArray, sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE, cudaMemcpyDeviceToHost));
+
+	if (display == 1)
+	{
+		displayTable(plainArray, hashArray, columnCount, rowCount);
+	}
+
+	// Record the start event for the first kernel
+	customCudaError(cudaEventCreate(&start));
+	customCudaError(cudaEventCreate(&stop));
+	customCudaError(cudaEventRecord(start, NULL));
+
+	printf("Searching for the hash into the table...\n");
+	findingKernel<<<rowCount,1024>>>(d_plainArray, d_hashArray, hash, columnCount, rowCount, maxValue);
+	customCudaError(cudaDeviceSynchronize());
+
+	// Record the stop event for the first event
+	customCudaError(cudaEventRecord(stop, NULL));
+	customCudaError(cudaEventSynchronize(stop));
+
+	printf("################\n");
+	float msecTotal = 0.0f;
+	customCudaError(cudaEventElapsedTime(&msecTotal, start, stop));
+	double gigaFlops = (columnCount * rowCount * MAX_BLOCK_SIZE * 1.0e-9f) / (msecTotal / 1000.0f);
+	printf("Cuda processing time = %.3fms, Performance = %.3f GFlop/s\n", msecTotal, gigaFlops);
+
+	customCudaError(cudaFree(d_plainArray));
+	customCudaError(cudaFree(d_hashArray));
+	customCudaError(cudaDeviceSynchronize());
+
+	free(plainArray);
+	free(hashArray);
     	exit(EXIT_SUCCESS);
 
 }
