@@ -239,6 +239,7 @@ int main(int argc, char** argv) {
 	printf("      HASH = %d\n", hash);
 	printf("      ROWS = %d\n", rowCount * MAX_BLOCK_SIZE);
 	printf("      COLUMNS = %d\n", columnCount);
+	printf("      MAX_ITERATION = %d\n", MAX_ITERATION);
 
 
 	printf("\nGenerating random passwords...\n");
