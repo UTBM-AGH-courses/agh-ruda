@@ -8,7 +8,6 @@
 #include <assert.h>
 #include <numeric>
 #include <string>
-#include <functional>
 
 using namespace std;
 
@@ -99,7 +98,6 @@ void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 			plain = reduction;
 			hashingKernel(plain, &localHash);
 			reduction = localHash;
-			__syncthreads();
 		}
 	}
 
