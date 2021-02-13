@@ -193,11 +193,11 @@ int main(int argc, char** argv) {
  	unsigned int *plainArray = NULL;
 	unsigned int *hashArray = NULL;
 
-	// Clear the terminal
-	system("clear");
-
 	// Get the device
 	int dev = findCudaDevice(argc, (const char **)argv);
+
+	// Clear the terminal
+	system("clear");
 
 	// Display the help
 	if (checkCmdLineFlag(argc, (const char **)argv, "help") || checkCmdLineFlag(argc, (const char **)argv, "?"))
@@ -217,9 +217,9 @@ int main(int argc, char** argv) {
        	hash = atoi(s_hash);
     }
 
-    if (checkCmdLineFlag(argc, (const char **)argv, "row"))
+    if (checkCmdLineFlag(argc, (const char **)argv, "block"))
     {
-		rowCount = getCmdLineArgumentInt(argc, (const char**)argv, "row");
+		rowCount = getCmdLineArgumentInt(argc, (const char**)argv, "block");
 	}
 	if (checkCmdLineFlag(argc, (const char **)argv, "depth"))
 	{
@@ -234,7 +234,14 @@ int main(int argc, char** argv) {
 	plainArray = (unsigned int *)malloc(sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE);
 	hashArray = (unsigned int *)malloc(sizeof(unsigned int) * rowCount * MAX_BLOCK_SIZE);
 
-	printf("Generating random passwords...\n");
+	printf("######## RUDA - Rainbow table password cracking CUDA implemetation ########\n");
+	printf("Choosen parameters :\n");
+	printf("      HASH = %d\n", hash);
+	printf("      ROWS = %d\n", rowCount * MAX_BLOCK_SIZE);
+	printf("      COLUMNS = %d\n", columnCount);
+
+
+	printf("\nGenerating random passwords...\n");
     srand(time(NULL));
     for (int i = 0; i < rowCount * MAX_BLOCK_SIZE; i++)
   	{
