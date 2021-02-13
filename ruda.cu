@@ -14,6 +14,7 @@ using namespace std;
 #define MAX_BLOCK_SIZE 1024
 
 __device__ bool found;
+__device__ unsigned int iteration;
 
 cudaError_t customCudaError(cudaError_t result)
 {
@@ -94,6 +95,12 @@ void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 		// If no entries match, reduce and hash until getting a matching value
 		else
 		{
+			iteration++;
+			if (iteration >= 4000000000) 
+			{
+				printf("#### Sorry, no match for this hash :( ####\n");
+				break;
+			}
 			reductionKernel(maxValue, localHash, &reduction);
 			plain = reduction;
 			hashingKernel(plain, &localHash);
