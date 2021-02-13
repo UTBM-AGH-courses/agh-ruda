@@ -12,6 +12,7 @@
 using namespace std;
 
 #define MAX_BLOCK_SIZE 1024
+#define MAX_ITERATION 100000
 
 __device__ bool found;
 __device__ unsigned int iteration;
@@ -96,9 +97,10 @@ void findingKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 		else
 		{
 			iteration++;
-			if (iteration >= 4000000000) 
+			__threadfence();
+			if (iteration >= MAX_ITERATION)
 			{
-				printf("#### Sorry, no match for this hash :( ####\n");
+				if (th == 0) printf("#### Sorry, no match for this hash :( ####\n");
 				break;
 			}
 			reductionKernel(maxValue, localHash, &reduction);
