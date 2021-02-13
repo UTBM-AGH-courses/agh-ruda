@@ -54,7 +54,6 @@ void reductionKernel(unsigned int maxValue, unsigned int hash, unsigned int *red
 		hash = hash / 10;
 	}
 	*reduction = hash;
-
 }
 
 __global__
