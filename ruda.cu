@@ -118,7 +118,7 @@ void rainbowKernel(unsigned int *plainArray, unsigned int *hashArray, unsigned i
 	hashArray[th] = hash;
 }
 
-void rainbowWrapper(unsigned int rowCount, unsigned int columnCount, unsigned int maxValue, unsigned int *plainArray, unsigned int *hashArray, bool display)
+void rainbowWrapper(unsigned int rowCount, unsigned int columnCount, unsigned int maxValue, unsigned int *plainArray, unsigned int *hashArray, bool display, unsigned int hash)
 {
 	unsigned int *d_plainArray = NULL;
 	unsigned int *d_hashArray = NULL;
@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
 
 	printf("Generation done\n");
 
-	rainbowWrapper(rowCount, columnCount, maxValue, plainArray, hashArray, display);
+	rainbowWrapper(rowCount, columnCount, maxValue, plainArray, hashArray, display, hash);
 
 	free(plainArray);
 	free(hashArray);
